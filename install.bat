@@ -25,10 +25,18 @@ pip install -r requirements.txt
 :: Crear carpeta exports si no existe
 if not exist exports mkdir exports
 
+:: Crear .env desde ejemplo si no existe
+if not exist .env (
+    copy .env.example .env
+    echo.
+    echo [IMPORTANTE] Se creo el archivo .env
+    echo Edita .env con la contraseña correcta de la base de datos.
+)
+
 echo.
 echo ========================================
 echo   Instalacion completada!
-echo   Configura el archivo .env con los
+echo   Verifica el archivo .env con los
 echo   datos de conexion a la base de datos.
 echo ========================================
 echo.
