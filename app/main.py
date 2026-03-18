@@ -9,7 +9,7 @@ from datetime import datetime
 
 from . import repository, services, storage
 
-app = FastAPI(title="Silver Column Selector")
+app = FastAPI(title="Gold Column Selector")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
@@ -25,7 +25,7 @@ async def index(request: Request):
 
 @app.get("/api/tables")
 async def api_tables():
-    tables = repository.get_silver_tables()
+    tables = repository.get_tables()
     return {"tables": tables}
 
 

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo   Instalando Silver Column Selector
+echo   Instalando Gold Column Selector
 echo ========================================
 echo.
 
@@ -24,6 +24,9 @@ pip install -r requirements.txt
 
 :: Crear carpeta exports si no existe
 if not exist exports mkdir exports
+
+:: Limpiar selecciones guardadas (silver -> gold migration)
+echo {} > selections.json
 
 :: Crear .env desde ejemplo si no existe
 if not exist .env (

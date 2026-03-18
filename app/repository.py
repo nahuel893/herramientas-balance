@@ -16,13 +16,13 @@ def get_connection():
     )
 
 
-def get_silver_tables() -> list[str]:
+def get_tables() -> list[str]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name
         FROM information_schema.tables
-        WHERE table_schema = 'silver'
+        WHERE table_schema = 'gold'
         ORDER BY table_name
     """)
     tables = [row[0] for row in cur.fetchall()]
@@ -36,7 +36,7 @@ def get_table_columns(table_name: str) -> list[dict]:
     cur.execute("""
         SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
-        WHERE table_schema = 'silver' AND table_name = %s
+        WHERE table_schema = 'gold' AND table_name = %s
         ORDER BY ordinal_position
     """, (table_name,))
     columns = [{"name": row[0], "type": row[1], "nullable": row[2]} for row in cur.fetchall()]
@@ -47,7 +47,7 @@ def get_table_columns(table_name: str) -> list[dict]:
 def fetch_data(table_name: str, columns: list[str], conditions: list[str]) -> pd.DataFrame:
     conn = get_connection()
     safe_columns = ', '.join([f'"{col}"' for col in columns])
-    query = f'SELECT {safe_columns} FROM silver."{table_name}"'
+    query = f'SELECT {safe_columns} FROM gold."{table_name}"'
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
     df = pd.read_sql(query, conn)

@@ -1,20 +1,22 @@
-# Balance - Silver Column Selector
+# Balance - Gold Column Selector
 
 ## Proyecto
-Aplicacion web (FastAPI + Tailwind) para seleccionar columnas de tablas Silver de un Data Warehouse Medallion y exportarlas a CSV.
+Aplicacion web (FastAPI + Tailwind) para seleccionar columnas de tablas Gold de un Data Warehouse Medallion y exportarlas a CSV.
 
 ## Stack
 - **Backend:** FastAPI (Python), psycopg2, pandas
 - **Frontend:** HTML + Tailwind CSS (CDN) + vanilla JS
 - **DB:** PostgreSQL (`medallion_db`) en `100.72.221.10:5432`, usuario `nahuel`
-- **Schema principal:** `silver` (datos limpios y tipados)
+- **Schema principal:** `gold` (modelo dimensional, star schema)
 
 ## Estructura
 ```
 Balance/
 ├── app/
 │   ├── main.py          # Endpoints FastAPI
-│   ├── database.py      # Conexion y queries a PostgreSQL
+│   ├── repository.py    # Conexion y queries a PostgreSQL (schema gold)
+│   ├── services.py      # Logica de negocio (build query, discard columns, export)
+│   ├── storage.py       # Persistencia de selecciones (selections.json)
 │   ├── static/app.js    # Logica frontend
 │   └── templates/index.html  # Template principal
 ├── run.py               # Inicia uvicorn en 0.0.0.0:8000
@@ -28,7 +30,7 @@ Balance/
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
 | GET | `/` | Pagina principal |
-| GET | `/api/tables` | Lista tablas silver |
+| GET | `/api/tables` | Lista tablas gold |
 | GET | `/api/columns/{table}` | Columnas de una tabla |
 | POST | `/api/preview` | Preview 100 filas |
 | POST | `/api/export` | Exportar CSV (con descarte de columnas unicas) |
@@ -48,8 +50,8 @@ Balance/
 ## Data Warehouse
 Arquitectura Medallion (Bronze -> Silver -> Gold). Ver `DB_CONTEXT.md` para detalle completo de tablas, columnas y estadisticas.
 - **Bronze:** JSON crudo de ChessERP
-- **Silver:** Datos normalizados y tipados (lo que usa esta app)
-- **Gold:** Modelo dimensional (star schema)
+- **Silver:** Datos normalizados y tipados
+- **Gold:** Modelo dimensional (star schema) — lo que usa esta app
 
 ## Git
 - Repo: https://github.com/nahuel893/herramientas-balance

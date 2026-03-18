@@ -11,7 +11,7 @@ def build_select_query(
     date_to: str | None,
 ) -> str:
     safe_columns = ', '.join([f'"{col}"' for col in columns])
-    query = f'SELECT {safe_columns} FROM silver."{table}"'
+    query = f'SELECT {safe_columns} FROM gold."{table}"'
 
     conditions = []
     if date_column and date_from:
