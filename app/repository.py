@@ -5,6 +5,7 @@ import os
 
 load_dotenv()
 
+
 def get_connection():
     return psycopg2.connect(
         host=os.getenv('DB_HOST'),
@@ -14,7 +15,8 @@ def get_connection():
         password=os.getenv('DB_PASSWORD')
     )
 
-def get_silver_tables():
+
+def get_silver_tables() -> list[str]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -27,7 +29,8 @@ def get_silver_tables():
     conn.close()
     return tables
 
-def get_table_columns(table_name: str):
+
+def get_table_columns(table_name: str) -> list[dict]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -40,37 +43,13 @@ def get_table_columns(table_name: str):
     conn.close()
     return columns
 
-def preview_data(table_name: str, columns: list, limit: int = 100):
-    conn = get_connection()
-    safe_columns = ', '.join([f'"{col}"' for col in columns])
-    query = f'SELECT {safe_columns} FROM silver."{table_name}" LIMIT {limit}'
-    df = pd.read_sql(query, conn)
-    conn.close()
-    return df
 
-def export_data(table_name: str, columns: list, output_path: str, date_column: str = None, date_from: str = None, date_to: str = None):
+def fetch_data(table_name: str, columns: list[str], conditions: list[str]) -> pd.DataFrame:
     conn = get_connection()
     safe_columns = ', '.join([f'"{col}"' for col in columns])
     query = f'SELECT {safe_columns} FROM silver."{table_name}"'
-
-    conditions = []
-    if date_column and date_from:
-        conditions.append(f'"{date_column}" >= \'{date_from}\'')
-    if date_column and date_to:
-        conditions.append(f'"{date_column}" <= \'{date_to}\'')
-
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
-
     df = pd.read_sql(query, conn)
     conn.close()
-
-    # Revisar columnas con 1 solo valor unico y descartarlas
-    discarded = []
-    for col in df.columns.tolist():
-        if df[col].nunique() <= 1:
-            discarded.append(col)
-    df = df.drop(columns=discarded)
-
-    df.to_csv(output_path, index=False, encoding='utf-8-sig', sep=';')
-    return len(df), df.columns.tolist(), discarded
+    return df
