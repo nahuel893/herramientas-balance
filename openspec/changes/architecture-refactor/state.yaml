@@ -1,0 +1,15 @@
+change: architecture-refactor
+status: proposed
+created: 2026-03-18
+
+artifacts:
+  exploration: done
+  proposal: done
+  spec: done
+  design: done
+  tasks: done
+  apply: pending
+  verify: pending
+  archive: pending
+
+next_recommended: sdd-apply
