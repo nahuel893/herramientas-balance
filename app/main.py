@@ -17,6 +17,18 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 
+# Server-side allowlist for filterable columns
+FILTERABLE_COLUMNS = {
+    "dim_articulo":             ["generico", "marca"],
+    "fact_ventas":              ["id_sucursal", "generico", "marca"],
+    "fact_ventas_contabilidad": ["id_sucursal", "generico", "marca"],
+    "fact_stock":               ["id_deposito", "generico", "marca"],
+    "dim_cliente":              ["id_sucursal"],
+}
+
+FACT_TABLES = {"fact_ventas", "fact_ventas_contabilidad", "fact_stock"}
+ARTICULO_COLUMNS = {"generico", "marca"}
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -35,21 +47,38 @@ async def api_columns(table_name: str):
     return {"columns": columns}
 
 
+class ColumnFilter(BaseModel):
+    column: str
+    values: list[str]
+
+
 class PreviewRequest(BaseModel):
     table: str
     columns: list[str]
+    filters: Optional[list[ColumnFilter]] = None
+    date_column: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
 
 
 @app.post("/api/preview")
 async def api_preview(req: PreviewRequest):
     if not req.columns:
         return {"error": "No columns selected"}
-    return services.run_preview(req.table, req.columns)
+    return services.run_preview(
+        req.table,
+        req.columns,
+        filters=req.filters,
+        date_column=req.date_column,
+        date_from=req.date_from,
+        date_to=req.date_to,
+    )
 
 
 class ExportRequest(BaseModel):
     table: str
     columns: list[str]
+    filters: Optional[list[ColumnFilter]] = None
     date_column: Optional[str] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
@@ -71,6 +100,7 @@ async def api_export(req: ExportRequest):
         req.date_column,
         req.date_from,
         req.date_to,
+        filters=req.filters,
     )
 
     return {
@@ -80,6 +110,32 @@ async def api_export(req: ExportRequest):
         "exported_columns": exported_columns,
         "discarded_columns": discarded_columns,
     }
+
+
+@app.get("/api/filter-values/{table_name}")
+async def api_filter_values(table_name: str, request: Request):
+    if table_name not in FILTERABLE_COLUMNS:
+        return JSONResponse({"error": f"Table '{table_name}' is not filterable"}, status_code=400)
+
+    # Validate cascade query params against the table's allowlist
+    allowed_cols = set(FILTERABLE_COLUMNS[table_name])
+    cascade_params: dict[str, list[str]] = {}
+    for key, val in request.query_params.items():
+        if key not in allowed_cols:
+            return JSONResponse(
+                {"error": f"Column '{key}' is not a valid filter column for table '{table_name}'"},
+                status_code=400,
+            )
+        # A query param may appear multiple times (multi-value); collect as list
+        cascade_params[key] = request.query_params.getlist(key)
+
+    result = {}
+    for col in FILTERABLE_COLUMNS[table_name]:
+        # Build parent_filters for this column: all cascade params except the column itself
+        parent_filters = {k: v for k, v in cascade_params.items() if k != col}
+        result[col] = repository.get_column_values(table_name, col, parent_filters)
+
+    return result
 
 
 @app.get("/api/download/{filename}")

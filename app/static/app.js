@@ -2,6 +2,32 @@ let currentTable = null;
 let selectedColumns = [];
 let allColumns = [];
 
+// Static filter config — mirrors FILTERABLE_COLUMNS on the server
+const TABLE_FILTERS = {
+    "dim_articulo": [
+        { col: "generico", label: "Genérico", cascades: "marca" },
+        { col: "marca",    label: "Marca" }
+    ],
+    "fact_ventas": [
+        { col: "id_sucursal", label: "Sucursal" },
+        { col: "generico",    label: "Genérico", cascades: "marca" },
+        { col: "marca",       label: "Marca" }
+    ],
+    "fact_ventas_contabilidad": [
+        { col: "id_sucursal", label: "Sucursal" },
+        { col: "generico",    label: "Genérico", cascades: "marca" },
+        { col: "marca",       label: "Marca" }
+    ],
+    "fact_stock": [
+        { col: "id_deposito", label: "Depósito" },
+        { col: "generico",    label: "Genérico", cascades: "marca" },
+        { col: "marca",       label: "Marca" }
+    ],
+    "dim_cliente": [
+        { col: "id_sucursal", label: "Sucursal" }
+    ]
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     loadTables();
     loadSavedSelections();
@@ -36,6 +62,93 @@ async function selectTable(tableName) {
 
     renderColumns();
     updateDateColumnOptions();
+
+    // Load filter controls for this table
+    if (tableName in TABLE_FILTERS) {
+        await loadFilterValues(tableName);
+    } else {
+        const filterSection = document.getElementById('filterSection');
+        filterSection.classList.add('hidden');
+        document.getElementById('filterControls').innerHTML = '';
+    }
+}
+
+// Load filter values from the server and render controls
+async function loadFilterValues(table, cascadeParams = {}) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(cascadeParams)) {
+        if (Array.isArray(v)) {
+            v.forEach(val => qs.append(k, val));
+        } else {
+            qs.append(k, v);
+        }
+    }
+    const url = `/api/filter-values/${table}` + (qs.toString() ? '?' + qs.toString() : '');
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    renderFilterControls(table, data);
+}
+
+// Render <select multiple> controls for each filterable column
+function renderFilterControls(table, valuesData) {
+    const filterDefs = TABLE_FILTERS[table];
+    if (!filterDefs) {
+        document.getElementById('filterSection').classList.add('hidden');
+        return;
+    }
+
+    const controls = document.getElementById('filterControls');
+    controls.innerHTML = filterDefs.map(fd => {
+        const values = valuesData[fd.col] || [];
+        const options = values.map(v => `<option value="${escapeHtml(String(v))}">${escapeHtml(String(v))}</option>`).join('');
+        const onchange = fd.cascades ? `onchange="onGenericoChange('${table}')"` : '';
+        return `
+            <div class="flex flex-col gap-1">
+                <label class="text-sm font-medium text-gray-600">${fd.label}</label>
+                <select id="filter-${fd.col}" multiple size="5"
+                    class="border rounded px-2 py-1 text-sm min-w-40 max-h-36 overflow-y-auto"
+                    ${onchange}>
+                    ${options}
+                </select>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('filterSection').classList.remove('hidden');
+}
+
+// Called when generico select changes — cascade-reload marca
+async function onGenericoChange(table) {
+    const genericoSelect = document.getElementById('filter-generico');
+    if (!genericoSelect) return;
+
+    const selectedValues = Array.from(genericoSelect.selectedOptions).map(o => o.value);
+
+    // Clear current marca selection
+    const marcaSelect = document.getElementById('filter-marca');
+    if (marcaSelect) {
+        marcaSelect.innerHTML = '';
+    }
+
+    const cascadeParams = selectedValues.length > 0 ? { generico: selectedValues } : {};
+    await loadFilterValues(table, cascadeParams);
+}
+
+// Collect active filter selections into [{column, values}], or null if nothing selected
+function collectFilters() {
+    if (!currentTable || !(currentTable in TABLE_FILTERS)) return null;
+
+    const filters = [];
+    for (const fd of TABLE_FILTERS[currentTable]) {
+        const select = document.getElementById(`filter-${fd.col}`);
+        if (!select) continue;
+        const values = Array.from(select.selectedOptions).map(o => o.value);
+        if (values.length > 0) {
+            filters.push({ column: fd.col, values });
+        }
+    }
+    return filters.length > 0 ? filters : null;
 }
 
 function renderColumns() {
@@ -104,10 +217,14 @@ async function previewData() {
         return;
     }
 
+    const filters = collectFilters();
+    const body = { table: currentTable, columns: selectedColumns };
+    if (filters !== null) body.filters = filters;
+
     const res = await fetch('/api/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({table: currentTable, columns: selectedColumns})
+        body: JSON.stringify(body)
     });
     const data = await res.json();
 
@@ -142,16 +259,20 @@ async function exportData() {
 
     showStatus('Exportando...', 'info');
 
+    const filters = collectFilters();
+    const body = {
+        table: currentTable,
+        columns: selectedColumns,
+        date_column: dateColumn || null,
+        date_from: dateFrom || null,
+        date_to: dateTo || null
+    };
+    if (filters !== null) body.filters = filters;
+
     const res = await fetch('/api/export', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            table: currentTable,
-            columns: selectedColumns,
-            date_column: dateColumn || null,
-            date_from: dateFrom || null,
-            date_to: dateTo || null
-        })
+        body: JSON.stringify(body)
     });
     const data = await res.json();
 
@@ -244,4 +365,13 @@ function showStatus(message, type) {
     }[type];
 
     setTimeout(() => container.classList.add('hidden'), 4000);
+}
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
