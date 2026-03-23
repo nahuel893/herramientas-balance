@@ -1,0 +1,14 @@
+change: column-filters
+status: tasks
+artifacts:
+  exploration: openspec/changes/column-filters/exploration.md
+  proposal: openspec/changes/column-filters/proposal.md
+  specs:
+    filter-values-endpoint: openspec/changes/column-filters/specs/filter-values-endpoint/spec.md
+    filter-model: openspec/changes/column-filters/specs/filter-model/spec.md
+    services: openspec/changes/column-filters/specs/services/spec.md
+    repository: openspec/changes/column-filters/specs/repository/spec.md
+    frontend: openspec/changes/column-filters/specs/frontend/spec.md
+  design: openspec/changes/column-filters/design.md
+  tasks: openspec/changes/column-filters/tasks.md
+next: sdd-apply

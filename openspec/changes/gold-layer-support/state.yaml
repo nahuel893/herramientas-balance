@@ -1,0 +1,11 @@
+change: gold-layer-support
+artifacts:
+  exploration: done
+  proposal: done
+  spec: done
+  design: done
+  tasks: done
+  apply-progress: pending
+  verify-report: pending
+  archive-report: pending
+next_recommended: sdd-apply

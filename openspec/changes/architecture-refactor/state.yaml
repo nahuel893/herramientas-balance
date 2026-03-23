@@ -8,8 +8,8 @@ artifacts:
   spec: done
   design: done
   tasks: done
-  apply: pending
-  verify: pending
+  apply: done
+  verify: done
   archive: pending
 
-next_recommended: sdd-apply
+next_recommended: sdd-archive
