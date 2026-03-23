@@ -1,33 +1,16 @@
-import json
-import os
-from datetime import datetime
-
-SELECTIONS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "selections.json")
+from . import repository
 
 
-def load_selections() -> dict:
-    if os.path.exists(SELECTIONS_FILE):
-        with open(SELECTIONS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+def load_selections(user_id: int) -> dict:
+    """Load all selections for a given user from the database."""
+    return repository.get_user_selections(user_id)
 
 
-def save_selection(name: str, table: str, columns: list[str]) -> None:
-    selections = load_selections()
-    selections[name] = {
-        "table": table,
-        "columns": columns,
-        "created_at": datetime.now().isoformat(),
-    }
-    with open(SELECTIONS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(selections, f, indent=2, ensure_ascii=False)
+def save_selection(user_id: int, name: str, table: str, columns: list[str]) -> None:
+    """Save (upsert) a selection for a given user."""
+    repository.save_user_selection(user_id, name, table, columns)
 
 
-def delete_selection(name: str) -> bool:
-    selections = load_selections()
-    if name not in selections:
-        return False
-    del selections[name]
-    with open(SELECTIONS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(selections, f, indent=2, ensure_ascii=False)
-    return True
+def delete_selection(user_id: int, name: str) -> bool:
+    """Delete a selection by name for a given user. Returns True if deleted."""
+    return repository.delete_user_selection(user_id, name)

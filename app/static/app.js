@@ -2,6 +2,16 @@ let currentTable = null;
 let selectedColumns = [];
 let allColumns = [];
 
+// Auth-aware fetch wrapper: redirects to /login on 401
+async function authFetch(url, options) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        window.location.href = '/login';
+        return res;
+    }
+    return res;
+}
+
 // Static filter config — mirrors FILTERABLE_COLUMNS on the server
 const TABLE_FILTERS = {
     "dim_articulo": [
@@ -35,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadTables() {
-    const res = await fetch('/api/tables');
+    const res = await authFetch('/api/tables');
     const data = await res.json();
     const container = document.getElementById('tablesList');
     container.innerHTML = data.tables.map(t => `
@@ -56,7 +66,7 @@ async function selectTable(tableName) {
 
     document.getElementById('tableNameDisplay').textContent = tableName;
 
-    const res = await fetch(`/api/columns/${tableName}`);
+    const res = await authFetch(`/api/columns/${tableName}`);
     const data = await res.json();
     allColumns = data.columns;
 
@@ -84,7 +94,7 @@ async function loadFilterValues(table, cascadeParams = {}) {
         }
     }
     const url = `/api/filter-values/${table}` + (qs.toString() ? '?' + qs.toString() : '');
-    const res = await fetch(url);
+    const res = await authFetch(url);
     if (!res.ok) return;
     const data = await res.json();
     renderFilterControls(table, data);
@@ -177,7 +187,7 @@ async function onGenericoChange() {
     const qs = new URLSearchParams();
     selectedValues.forEach(v => qs.append('generico', v));
     const url = `/api/filter-values/${encodeURIComponent(table)}` + (qs.toString() ? '?' + qs.toString() : '');
-    const res = await fetch(url);
+    const res = await authFetch(url);
     if (!res.ok) return;
     const data = await res.json();
 
@@ -270,11 +280,12 @@ async function previewData() {
     const body = { table: currentTable, columns: selectedColumns };
     if (filters !== null) body.filters = filters;
 
-    const res = await fetch('/api/preview', {
+    const res = await authFetch('/api/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
     });
+    if (res.status === 401) return;
     const data = await res.json();
 
     if (data.error) {
@@ -318,11 +329,12 @@ async function exportData() {
     };
     if (filters !== null) body.filters = filters;
 
-    const res = await fetch('/api/export', {
+    const res = await authFetch('/api/export', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(body)
     });
+    if (res.status === 401) return;
     const data = await res.json();
 
     if (data.error) {
@@ -353,7 +365,7 @@ async function exportData() {
 }
 
 async function loadSavedSelections() {
-    const res = await fetch('/api/selections');
+    const res = await authFetch('/api/selections');
     const data = await res.json();
     const select = document.getElementById('savedSelections');
     select.innerHTML = '<option value="">Cargar seleccion...</option>' +
@@ -364,7 +376,7 @@ async function loadSelection() {
     const name = document.getElementById('savedSelections').value;
     if (!name) return;
 
-    const res = await fetch('/api/selections');
+    const res = await authFetch('/api/selections');
     const data = await res.json();
     const selection = data.selections[name];
 
@@ -388,11 +400,12 @@ async function saveSelection() {
         return;
     }
 
-    const res = await fetch('/api/selections', {
+    const res = await authFetch('/api/selections', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({name, table: currentTable, columns: selectedColumns})
     });
+    if (res.status === 401) return;
 
     if (res.ok) {
         showStatus(`Seleccion "${name}" guardada`, 'success');

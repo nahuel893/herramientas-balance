@@ -1,3 +1,6 @@
+import json
+import sqlite3
+
 import psycopg2
 import pandas as pd
 from dotenv import load_dotenv
@@ -80,7 +83,14 @@ def get_column_values(table: str, column: str, parent_filters: dict) -> list:
         if not filter_vals:
             continue
         placeholders = ', '.join(['%s'] * len(filter_vals))
-        conditions.append(f'"{filter_col}" IN ({placeholders})')
+        # If querying a fact table but the filter column lives in dim_articulo,
+        # use a subquery instead of a direct WHERE
+        if target_table in FACT_TABLES and filter_col in ARTICULO_COLUMNS:
+            conditions.append(
+                f'"id_articulo" IN (SELECT "id_articulo" FROM gold."dim_articulo" WHERE "{filter_col}" IN ({placeholders}))'
+            )
+        else:
+            conditions.append(f'"{filter_col}" IN ({placeholders})')
         params.extend(filter_vals)
 
     query = f'SELECT DISTINCT "{column}" FROM gold."{target_table}"'
@@ -92,3 +102,165 @@ def get_column_values(table: str, column: str, parent_filters: dict) -> list:
     values = [row[0] for row in cur.fetchall() if row[0] is not None]
     conn.close()
     return values
+
+
+# ---------------------------------------------------------------------------
+# App schema: SQLite for users & selections
+# ---------------------------------------------------------------------------
+
+def get_app_connection():
+    """SQLite connection for app-internal tables (users, selections)."""
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'app.db')
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def ensure_app_schema():
+    """Create the app tables in SQLite if they don't exist. Idempotent."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_selections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            columns TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(user_id, name)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+# -- User queries -----------------------------------------------------------
+
+def get_user_by_username(username):
+    """Returns {"id", "username", "password_hash"} or None."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, username, password_hash FROM users WHERE username = ?",
+        (username,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"id": row[0], "username": row[1], "password_hash": row[2]}
+
+
+def get_user_by_id(user_id):
+    """Returns {"id", "username", "created_at"} or None."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, username, created_at FROM users WHERE id = ?",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"id": row[0], "username": row[1], "created_at": row[2]}
+
+
+def create_user(username, password_hash):
+    """Insert a new user. Returns {"id", "username"}. Raises on duplicate."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+        (username, password_hash),
+    )
+    user_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {"id": user_id, "username": username}
+
+
+def delete_user(user_id):
+    """Delete a user by id. Returns True if deleted, False if not found."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def list_users():
+    """Return all users as list of {"id", "username", "created_at"}."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, created_at FROM users ORDER BY id")
+    users = [
+        {"id": row[0], "username": row[1], "created_at": row[2]}
+        for row in cur.fetchall()
+    ]
+    conn.close()
+    return users
+
+
+# -- Selection queries ------------------------------------------------------
+
+def get_user_selections(user_id):
+    """Returns {name: {"table": ..., "columns": [...], "created_at": ...}}."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, table_name, columns, created_at FROM user_selections WHERE user_id = ? ORDER BY name",
+        (user_id,),
+    )
+    selections = {}
+    for row in cur.fetchall():
+        selections[row[0]] = {
+            "table": row[1],
+            "columns": json.loads(row[2]),
+            "created_at": row[3],
+        }
+    conn.close()
+    return selections
+
+
+def save_user_selection(user_id, name, table, columns):
+    """Upsert a selection for a user. columns is a list of strings."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    columns_json = json.dumps(columns)
+    cur.execute("""
+        INSERT INTO user_selections (user_id, name, table_name, columns)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (user_id, name)
+        DO UPDATE SET table_name = EXCLUDED.table_name,
+                      columns = EXCLUDED.columns,
+                      created_at = datetime('now')
+    """, (user_id, name, table, columns_json))
+    conn.commit()
+    conn.close()
+
+
+def delete_user_selection(user_id, name):
+    """Delete a selection by user_id and name. Returns True if deleted."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM user_selections WHERE user_id = ? AND name = ?",
+        (user_id, name),
+    )
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted

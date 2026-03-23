@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuarios - Gold Column Selector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <h1 class="text-xl font-semibold text-gray-800">Administrar Usuarios</h1>
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-gray-600">{{ user.username }}</span>
+                    <a href="/" class="text-blue-500 hover:text-blue-600 text-sm">Volver</a>
+                    <form method="POST" action="/logout" class="inline">
+                        <button type="submit" class="text-red-500 hover:text-red-600 text-sm">Cerrar sesion</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 py-6">
+        <!-- Create user form -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6">
+            <h2 class="font-semibold text-gray-700 mb-3">Crear usuario</h2>
+            <div id="createError" class="bg-red-50 border border-red-200 text-red-700 rounded px-4 py-3 mb-3 text-sm hidden"></div>
+            <div id="createSuccess" class="bg-green-50 border border-green-200 text-green-700 rounded px-4 py-3 mb-3 text-sm hidden"></div>
+            <form id="createUserForm" class="flex gap-3 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+                    <input type="text" id="newUsername" required
+                           class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
+                    <input type="password" id="newPassword" required
+                           class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button type="submit"
+                        class="bg-blue-500 text-white px-4 py-2 rounded text-sm hover:bg-blue-600 whitespace-nowrap">
+                    Crear
+                </button>
+            </form>
+        </div>
+
+        <!-- User list -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h2 class="font-semibold text-gray-700 mb-3">Usuarios</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-2 text-gray-600">Usuario</th>
+                        <th class="text-left py-2 text-gray-600">Creado</th>
+                        <th class="text-right py-2 text-gray-600">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="usersList"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        const currentUserId = {{ user.id }};
+
+        function createEl(tag, className, text) {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (text) el.textContent = text;
+            return el;
+        }
+
+        async function loadUsers() {
+            const res = await fetch('/api/users');
+            if (res.status === 401) { window.location.href = '/login'; return; }
+            const data = await res.json();
+            const tbody = document.getElementById('usersList');
+            tbody.replaceChildren();
+
+            data.users.forEach(u => {
+                const isSelf = u.id === currentUserId;
+                const tr = createEl('tr', 'border-b');
+
+                const tdName = createEl('td', 'py-2');
+                tdName.textContent = u.username;
+                if (isSelf) {
+                    const badge = createEl('span', 'text-xs text-blue-500 ml-1', '(vos)');
+                    tdName.appendChild(badge);
+                }
+                tr.appendChild(tdName);
+
+                const tdDate = createEl('td', 'py-2 text-gray-500',
+                    new Date(u.created_at).toLocaleDateString('es-AR'));
+                tr.appendChild(tdDate);
+
+                const tdActions = createEl('td', 'py-2 text-right');
+                if (isSelf) {
+                    tdActions.appendChild(createEl('span', 'text-gray-400 text-xs', '-'));
+                } else {
+                    const btn = createEl('button', 'text-red-500 hover:text-red-600 text-xs', 'Eliminar');
+                    btn.addEventListener('click', () => deleteUser(u.id, u.username));
+                    tdActions.appendChild(btn);
+                }
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('createUserForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errEl = document.getElementById('createError');
+            const okEl = document.getElementById('createSuccess');
+            errEl.classList.add('hidden');
+            okEl.classList.add('hidden');
+
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value.trim();
+
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, password}),
+            });
+
+            if (res.status === 401) { window.location.href = '/login'; return; }
+            const data = await res.json();
+            if (data.error) {
+                errEl.textContent = data.error;
+                errEl.classList.remove('hidden');
+            } else {
+                okEl.textContent = 'Usuario "' + username + '" creado';
+                okEl.classList.remove('hidden');
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newPassword').value = '';
+                loadUsers();
+            }
+        });
+
+        async function deleteUser(id, username) {
+            if (!confirm('Eliminar usuario "' + username + '"?')) return;
+            const res = await fetch('/api/users/' + id, {method: 'DELETE'});
+            if (res.status === 401) { window.location.href = '/login'; return; }
+            const data = await res.json();
+            if (data.error) alert(data.error);
+            else loadUsers();
+        }
+
+        loadUsers();
+    </script>
+</body>
+</html>
