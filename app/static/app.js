@@ -90,7 +90,7 @@ async function loadFilterValues(table, cascadeParams = {}) {
     renderFilterControls(table, data);
 }
 
-// Render <select multiple> controls for each filterable column
+// Render checkbox lists for each filterable column
 function renderFilterControls(table, valuesData) {
     const filterDefs = TABLE_FILTERS[table];
     if (!filterDefs) {
@@ -99,40 +99,89 @@ function renderFilterControls(table, valuesData) {
     }
 
     const controls = document.getElementById('filterControls');
-    controls.innerHTML = filterDefs.map(fd => {
-        const values = valuesData[fd.col] || [];
-        const options = values.map(v => `<option value="${escapeHtml(String(v))}">${escapeHtml(String(v))}</option>`).join('');
-        const onchange = fd.cascades ? `onchange="onGenericoChange('${table}')"` : '';
-        return `
-            <div class="flex flex-col gap-1">
-                <label class="text-sm font-medium text-gray-600">${fd.label}</label>
-                <select id="filter-${fd.col}" multiple size="5"
-                    class="border rounded px-2 py-1 text-sm min-w-40 max-h-36 overflow-y-auto"
-                    ${onchange}>
-                    ${options}
-                </select>
-            </div>
-        `;
-    }).join('');
+    controls.innerHTML = '';
+
+    filterDefs.forEach(fd => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex flex-col gap-1 min-w-40';
+
+        const labelEl = document.createElement('label');
+        labelEl.className = 'text-sm font-medium text-gray-600';
+        labelEl.textContent = fd.label;
+
+        const listEl = document.createElement('div');
+        listEl.id = 'filter-' + fd.col;
+        listEl.className = 'border rounded px-2 py-1 max-h-40 overflow-y-auto bg-white';
+        if (fd.cascades) {
+            listEl.dataset.cascades = fd.cascades;
+            listEl.dataset.table = table;
+        }
+
+        fillCheckboxList(listEl, fd.col, valuesData[fd.col] || [], !!fd.cascades);
+
+        wrapper.appendChild(labelEl);
+        wrapper.appendChild(listEl);
+        controls.appendChild(wrapper);
+    });
 
     document.getElementById('filterSection').classList.remove('hidden');
 }
 
-// Called when generico select changes — cascade-reload marca
-async function onGenericoChange(table) {
-    const genericoSelect = document.getElementById('filter-generico');
-    if (!genericoSelect) return;
-
-    const selectedValues = Array.from(genericoSelect.selectedOptions).map(o => o.value);
-
-    // Clear current marca selection
-    const marcaSelect = document.getElementById('filter-marca');
-    if (marcaSelect) {
-        marcaSelect.innerHTML = '';
+// Populate a checkbox container with values
+function fillCheckboxList(container, colName, values, hasCascade) {
+    container.innerHTML = '';
+    if (values.length === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'text-gray-400 text-xs';
+        empty.textContent = 'Sin valores';
+        container.appendChild(empty);
+        return;
     }
+    values.forEach(v => {
+        const label = document.createElement('label');
+        label.className = 'flex items-center gap-2 px-1 py-0.5 hover:bg-gray-50 rounded cursor-pointer text-sm';
 
-    const cascadeParams = selectedValues.length > 0 ? { generico: selectedValues } : {};
-    await loadFilterValues(table, cascadeParams);
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = String(v);
+        if (hasCascade) cb.addEventListener('change', () => onGenericoChange());
+
+        const span = document.createElement('span');
+        span.textContent = String(v);
+
+        label.appendChild(cb);
+        label.appendChild(span);
+        container.appendChild(label);
+    });
+}
+
+// Called when a cascading filter changes — reload the target column's values
+async function onGenericoChange() {
+    const genericoContainer = document.getElementById('filter-generico');
+    if (!genericoContainer) return;
+
+    const table = genericoContainer.dataset.table;
+    const selectedValues = Array.from(
+        genericoContainer.querySelectorAll('input[type=checkbox]:checked')
+    ).map(cb => cb.value);
+
+    const marcaContainer = document.getElementById('filter-marca');
+    if (!marcaContainer) return;
+
+    marcaContainer.innerHTML = '';
+    const loading = document.createElement('span');
+    loading.className = 'text-gray-400 text-xs';
+    loading.textContent = 'Cargando...';
+    marcaContainer.appendChild(loading);
+
+    const qs = new URLSearchParams();
+    selectedValues.forEach(v => qs.append('generico', v));
+    const url = `/api/filter-values/${encodeURIComponent(table)}` + (qs.toString() ? '?' + qs.toString() : '');
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    fillCheckboxList(marcaContainer, 'marca', data['marca'] || [], false);
 }
 
 // Collect active filter selections into [{column, values}], or null if nothing selected
@@ -143,7 +192,7 @@ function collectFilters() {
     for (const fd of TABLE_FILTERS[currentTable]) {
         const select = document.getElementById(`filter-${fd.col}`);
         if (!select) continue;
-        const values = Array.from(select.selectedOptions).map(o => o.value);
+        const values = Array.from(select.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
         if (values.length > 0) {
             filters.push({ column: fd.col, values });
         }
