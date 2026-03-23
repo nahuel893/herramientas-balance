@@ -61,7 +61,7 @@ ARTICULO_COLUMNS = {"generico", "marca"}
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 
 @app.post("/login")
@@ -75,10 +75,7 @@ async def login_post(request: Request):
         request.session["user_id"] = user["id"]
         return RedirectResponse(url="/", status_code=302)
 
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": "Credenciales invalidas"},
-    )
+    return templates.TemplateResponse(request, "login.html", {"error": "Credenciales invalidas"})
 
 
 @app.post("/logout")
@@ -93,7 +90,7 @@ async def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, user: dict = Depends(get_current_user)):
-    return templates.TemplateResponse("index.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "index.html", {"user": user})
 
 
 @app.get("/api/tables")
@@ -243,7 +240,7 @@ async def api_delete_selection(name: str, user: dict = Depends(get_current_user)
 
 @app.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, user: dict = Depends(get_current_user)):
-    return templates.TemplateResponse("users.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "users.html", {"user": user})
 
 
 @app.get("/api/users")
