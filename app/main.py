@@ -41,6 +41,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # Server-side allowlist for filterable columns
 FILTERABLE_COLUMNS = {
