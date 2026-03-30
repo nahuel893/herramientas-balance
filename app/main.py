@@ -41,6 +41,12 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+
+# Cache-busting: use app.js modification time as version
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+_js_path = os.path.join(_static_dir, "app.js")
+STATIC_VERSION = int(os.path.getmtime(_js_path)) if os.path.exists(_js_path) else 0
+templates.env.globals["static_version"] = STATIC_VERSION
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # Server-side allowlist for filterable columns
