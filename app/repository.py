@@ -59,10 +59,33 @@ def fetch_data(table_name: str, columns: list[str], conditions: list[tuple[str, 
     return df
 
 
-def get_column_values(table: str, column: str, parent_filters: dict) -> list:
+# Columns that need description lookup from their dimension table
+LABEL_LOOKUPS = {
+    "id_sucursal": {"table": "dim_sucursal", "id_col": "id_sucursal", "desc_col": "descripcion"},
+    "id_deposito": {"table": "dim_deposito", "id_col": "id_deposito", "desc_col": "descripcion"},
+}
+
+
+def _fetch_labels(column: str) -> dict:
+    """Fetch id→description mapping from a dimension table for labeled columns."""
+    lookup = LABEL_LOOKUPS.get(column)
+    if not lookup:
+        return {}
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        f'SELECT "{lookup["id_col"]}", "{lookup["desc_col"]}" FROM gold."{lookup["table"]}" ORDER BY "{lookup["id_col"]}"'
+    )
+    labels = {row[0]: row[1] for row in cur.fetchall()}
+    conn.close()
+    return labels
+
+
+def get_column_values(table: str, column: str, parent_filters: dict) -> list[dict]:
     """Return sorted distinct non-NULL values for `column` in `table`,
     optionally constrained by `parent_filters` ({col: [val, ...]}).
 
+    Returns list of {"value": str, "label": str} dicts.
     For generico/marca on fact tables, queries dim_articulo directly.
     """
     ARTICULO_COLUMNS = {"generico", "marca"}
@@ -99,9 +122,18 @@ def get_column_values(table: str, column: str, parent_filters: dict) -> list:
     query += f' ORDER BY "{column}"'
 
     cur.execute(query, params)
-    values = [row[0] for row in cur.fetchall() if row[0] is not None]
+    raw_values = [row[0] for row in cur.fetchall() if row[0] is not None]
     conn.close()
-    return values
+
+    # Build value+label objects
+    if column in LABEL_LOOKUPS:
+        labels = _fetch_labels(column)
+        return [
+            {"value": str(v), "label": f"{v} - {labels.get(v, str(v))}"}
+            for v in raw_values
+        ]
+    else:
+        return [{"value": str(v), "label": str(v)} for v in raw_values]
 
 
 # ---------------------------------------------------------------------------

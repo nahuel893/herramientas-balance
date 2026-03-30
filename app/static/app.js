@@ -137,27 +137,61 @@ function renderFilterControls(table, valuesData) {
     document.getElementById('filterSection').classList.remove('hidden');
 }
 
-// Populate a checkbox container with values
-function fillCheckboxList(container, colName, values, hasCascade) {
+// Sync the "Todos" checkbox state with individual item checkboxes
+function syncTodosCheckbox(container) {
+    const todosCheckbox = container.querySelector('input[data-todos]');
+    if (!todosCheckbox) return;
+    const itemCheckboxes = container.querySelectorAll('input[type=checkbox]:not([data-todos])');
+    const allChecked = itemCheckboxes.length > 0 && Array.from(itemCheckboxes).every(cb => cb.checked);
+    todosCheckbox.checked = allChecked;
+}
+
+// Populate a checkbox container with values (items are {value, label} objects)
+function fillCheckboxList(container, colName, items, hasCascade) {
     container.innerHTML = '';
-    if (values.length === 0) {
+    if (items.length === 0) {
         const empty = document.createElement('span');
         empty.className = 'text-gray-400 text-xs';
         empty.textContent = 'Sin valores';
         container.appendChild(empty);
         return;
     }
-    values.forEach(v => {
+
+    // "Todos" checkbox at the top
+    const todosLabel = document.createElement('label');
+    todosLabel.className = 'flex items-center gap-2 px-1 py-0.5 bg-gray-100 rounded cursor-pointer text-sm font-semibold border-b mb-1 sticky top-0';
+
+    const todosCb = document.createElement('input');
+    todosCb.type = 'checkbox';
+    todosCb.dataset.todos = '1';
+    todosCb.addEventListener('change', () => {
+        const itemCheckboxes = container.querySelectorAll('input[type=checkbox]:not([data-todos])');
+        itemCheckboxes.forEach(cb => { cb.checked = todosCb.checked; });
+        if (hasCascade) onGenericoChange();
+    });
+
+    const todosSpan = document.createElement('span');
+    todosSpan.textContent = 'Todos';
+
+    todosLabel.appendChild(todosCb);
+    todosLabel.appendChild(todosSpan);
+    container.appendChild(todosLabel);
+
+    // Individual item checkboxes
+    items.forEach(item => {
         const label = document.createElement('label');
         label.className = 'flex items-center gap-2 px-1 py-0.5 hover:bg-gray-50 rounded cursor-pointer text-sm';
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.value = String(v);
-        if (hasCascade) cb.addEventListener('change', () => onGenericoChange());
+        cb.value = item.value;
+        cb.addEventListener('change', () => {
+            syncTodosCheckbox(container);
+            if (hasCascade) onGenericoChange();
+        });
 
         const span = document.createElement('span');
-        span.textContent = String(v);
+        span.textContent = item.label;
 
         label.appendChild(cb);
         label.appendChild(span);
@@ -171,12 +205,16 @@ async function onGenericoChange() {
     if (!genericoContainer) return;
 
     const table = genericoContainer.dataset.table;
-    const selectedValues = Array.from(
-        genericoContainer.querySelectorAll('input[type=checkbox]:checked')
-    ).map(cb => cb.value);
 
     const marcaContainer = document.getElementById('filter-marca');
     if (!marcaContainer) return;
+
+    // Determine selected generico values
+    // If "Todos" is checked or nothing is selected, don't pass generico filter (show all marca)
+    const allSelected = isAllSelected(genericoContainer);
+    const checkedValues = Array.from(
+        genericoContainer.querySelectorAll('input[type=checkbox]:checked:not([data-todos])')
+    ).map(cb => cb.value);
 
     marcaContainer.innerHTML = '';
     const loading = document.createElement('span');
@@ -185,7 +223,10 @@ async function onGenericoChange() {
     marcaContainer.appendChild(loading);
 
     const qs = new URLSearchParams();
-    selectedValues.forEach(v => qs.append('generico', v));
+    // Only pass generico filter if there's a partial selection (not all, not none)
+    if (!allSelected && checkedValues.length > 0) {
+        checkedValues.forEach(v => qs.append('generico', v));
+    }
     const url = `/api/filter-values/${encodeURIComponent(table)}` + (qs.toString() ? '?' + qs.toString() : '');
     const res = await authFetch(url);
     if (!res.ok) return;
@@ -194,15 +235,29 @@ async function onGenericoChange() {
     fillCheckboxList(marcaContainer, 'marca', data['marca'] || [], false);
 }
 
-// Collect active filter selections into [{column, values}], or null if nothing selected
+// Check if a filter container has "all selected" (Todos checked or every item checked)
+function isAllSelected(container) {
+    const todosCheckbox = container.querySelector('input[data-todos]');
+    if (todosCheckbox && todosCheckbox.checked) return true;
+    const itemCheckboxes = container.querySelectorAll('input[type=checkbox]:not([data-todos])');
+    if (itemCheckboxes.length === 0) return true;
+    return Array.from(itemCheckboxes).every(cb => cb.checked);
+}
+
+// Collect active filter selections into [{column, values}], or null if nothing selected.
+// Omits a filter entirely when "Todos" / all items are checked (= no restriction).
 function collectFilters() {
     if (!currentTable || !(currentTable in TABLE_FILTERS)) return null;
 
     const filters = [];
     for (const fd of TABLE_FILTERS[currentTable]) {
-        const select = document.getElementById(`filter-${fd.col}`);
-        if (!select) continue;
-        const values = Array.from(select.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+        const container = document.getElementById(`filter-${fd.col}`);
+        if (!container) continue;
+        // If all selected, omit this filter (same as "no filter")
+        if (isAllSelected(container)) continue;
+        const values = Array.from(
+            container.querySelectorAll('input[type=checkbox]:checked:not([data-todos])')
+        ).map(cb => cb.value);
         if (values.length > 0) {
             filters.push({ column: fd.col, values });
         }
