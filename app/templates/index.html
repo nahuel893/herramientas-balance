@@ -83,7 +83,7 @@
 
         <!-- Filtros y acciones -->
         <div class="mt-6 bg-white rounded-lg shadow p-4">
-            <div class="flex items-center gap-6">
+            <div class="flex flex-wrap items-center gap-4">
                 <div class="flex items-center gap-2">
                     <label class="text-sm text-gray-600">Columna fecha:</label>
                     <select id="dateColumn" class="border rounded px-2 py-1 text-sm">
@@ -98,7 +98,16 @@
                     <label class="text-sm text-gray-600">Hasta:</label>
                     <input type="date" id="dateTo" class="border rounded px-2 py-1 text-sm">
                 </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="setDateShortcut('this_month')" class="border border-gray-300 text-gray-600 px-2 py-1 rounded text-xs hover:bg-gray-50">Este mes</button>
+                    <button onclick="setDateShortcut('last_month')" class="border border-gray-300 text-gray-600 px-2 py-1 rounded text-xs hover:bg-gray-50">Mes anterior</button>
+                    <button onclick="setDateShortcut('this_year')" class="border border-gray-300 text-gray-600 px-2 py-1 rounded text-xs hover:bg-gray-50">Este año</button>
+                </div>
                 <div class="flex-1"></div>
+                <button onclick="countRows()" class="bg-blue-100 text-blue-700 border border-blue-300 px-4 py-2 rounded text-sm hover:bg-blue-200">
+                    Contar filas
+                </button>
+                <span id="countResult" class="text-sm text-gray-600 font-medium min-w-24"></span>
                 <button onclick="previewData()" class="bg-gray-500 text-white px-4 py-2 rounded text-sm hover:bg-gray-600">
                     Preview (100 filas)
                 </button>
@@ -116,6 +125,17 @@
             </div>
             <p id="discardedList" class="text-sm text-yellow-700"></p>
         </div>
+
+        <!-- Historial de exports -->
+        <details id="historySection" class="mt-6 bg-white rounded-lg shadow">
+            <summary class="px-4 py-3 cursor-pointer font-semibold text-gray-700 select-none hover:bg-gray-50 rounded-lg">
+                Historial de exports
+                <span id="historyCount" class="text-sm font-normal text-gray-400 ml-2"></span>
+            </summary>
+            <div class="px-4 pb-4">
+                <div id="historyList" class="mt-2 text-sm text-gray-500">Cargando...</div>
+            </div>
+        </details>
 
         <!-- Preview de datos -->
         <div id="previewSection" class="mt-6 bg-white rounded-lg shadow p-4 hidden">

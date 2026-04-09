@@ -41,6 +41,7 @@ const TABLE_FILTERS = {
 document.addEventListener('DOMContentLoaded', () => {
     loadTables();
     loadSavedSelections();
+    loadHistory();
     document.getElementById('savedSelections').addEventListener('change', loadSelection);
 });
 
@@ -331,8 +332,18 @@ async function previewData() {
         return;
     }
 
+    const dateColumn = document.getElementById('dateColumn').value;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+
     const filters = collectFilters();
-    const body = { table: currentTable, columns: selectedColumns };
+    const body = {
+        table: currentTable,
+        columns: selectedColumns,
+        date_column: dateColumn || null,
+        date_from: dateFrom || null,
+        date_to: dateTo || null,
+    };
     if (filters !== null) body.filters = filters;
 
     const res = await authFetch('/api/preview', {
@@ -417,6 +428,8 @@ async function exportData() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    loadHistory();
 }
 
 async function loadSavedSelections() {
@@ -482,6 +495,145 @@ function showStatus(message, type) {
     }[type];
 
     setTimeout(() => container.classList.add('hidden'), 4000);
+}
+
+function setDateShortcut(type) {
+    const now = new Date();
+    let from, to;
+
+    if (type === 'this_month') {
+        from = new Date(now.getFullYear(), now.getMonth(), 1);
+        to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (type === 'last_month') {
+        from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        to = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (type === 'this_year') {
+        from = new Date(now.getFullYear(), 0, 1);
+        to = new Date(now.getFullYear(), 11, 31);
+    } else {
+        return;
+    }
+
+    const toISO = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    };
+
+    document.getElementById('dateFrom').value = toISO(from);
+    document.getElementById('dateTo').value = toISO(to);
+}
+
+async function countRows() {
+    if (!currentTable || selectedColumns.length === 0) {
+        showStatus('Selecciona una tabla y columnas primero', 'error');
+        return;
+    }
+    const filters = collectFilters();
+    const dateColumn = document.getElementById('dateColumn').value;
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+
+    const body = {
+        table: currentTable,
+        columns: selectedColumns,
+        date_column: dateColumn || null,
+        date_from: dateFrom || null,
+        date_to: dateTo || null,
+    };
+    if (filters !== null) body.filters = filters;
+
+    const resultEl = document.getElementById('countResult');
+    resultEl.textContent = 'Contando...';
+
+    const res = await authFetch('/api/count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error) {
+        resultEl.textContent = '';
+        showStatus(data.error, 'error');
+    } else {
+        resultEl.textContent = `${data.count.toLocaleString()} filas`;
+    }
+}
+
+async function loadHistory() {
+    const res = await authFetch('/api/export-history');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderHistory(data.history || []);
+}
+
+function renderHistory(records) {
+    const listEl = document.getElementById('historyList');
+    const countEl = document.getElementById('historyCount');
+    if (!listEl) return;
+
+    if (records.length === 0) {
+        listEl.textContent = 'Sin exports todavía.';
+        countEl.textContent = '';
+        return;
+    }
+
+    countEl.textContent = `(${records.length})`;
+    listEl.innerHTML = ''; // safe — no dynamic user data injected below
+
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    ['Tabla', 'Filas', 'Fecha', 'Descargar'].forEach(text => {
+        const th = document.createElement('th');
+        th.className = 'text-left px-2 py-1 text-gray-500 font-medium border-b';
+        th.textContent = text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    records.forEach(rec => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50';
+
+        // table name
+        const tdTable = document.createElement('td');
+        tdTable.className = 'px-2 py-1 border-b';
+        tdTable.textContent = rec.table_name;
+
+        // row count
+        const tdRows = document.createElement('td');
+        tdRows.className = 'px-2 py-1 border-b';
+        tdRows.textContent = rec.row_count.toLocaleString();
+
+        // timestamp
+        const tdTime = document.createElement('td');
+        tdTime.className = 'px-2 py-1 border-b text-gray-400';
+        tdTime.textContent = rec.timestamp;
+
+        // download link
+        const tdLink = document.createElement('td');
+        tdLink.className = 'px-2 py-1 border-b';
+        const a = document.createElement('a');
+        a.href = `/api/download/${encodeURIComponent(rec.filename)}`;
+        a.download = rec.filename;
+        a.className = 'text-blue-500 hover:underline';
+        a.textContent = 'Descargar';
+        tdLink.appendChild(a);
+
+        tr.appendChild(tdTable);
+        tr.appendChild(tdRows);
+        tr.appendChild(tdTime);
+        tr.appendChild(tdLink);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    listEl.appendChild(table);
 }
 
 function escapeHtml(str) {

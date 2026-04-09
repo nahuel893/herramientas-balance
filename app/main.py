@@ -149,6 +149,36 @@ class ExportRequest(BaseModel):
     date_to: Optional[str] = None
 
 
+class CountRequest(BaseModel):
+    table: str
+    columns: list[str]
+    filters: Optional[list[ColumnFilter]] = None
+    date_column: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+
+
+@app.post("/api/count")
+async def api_count(req: CountRequest, user: dict = Depends(get_current_user)):
+    if not req.columns:
+        return {"error": "No columns selected"}
+    count = services.run_count(
+        req.table,
+        req.columns,
+        filters=req.filters,
+        date_column=req.date_column,
+        date_from=req.date_from,
+        date_to=req.date_to,
+    )
+    return {"count": count}
+
+
+@app.get("/api/export-history")
+async def api_export_history(user: dict = Depends(get_current_user)):
+    history = repository.get_export_history(user["id"])
+    return {"history": history}
+
+
 @app.post("/api/export")
 async def api_export(req: ExportRequest, user: dict = Depends(get_current_user)):
     if not req.columns:
@@ -167,6 +197,8 @@ async def api_export(req: ExportRequest, user: dict = Depends(get_current_user))
         req.date_to,
         filters=req.filters,
     )
+
+    repository.insert_export_history(user["id"], filename, req.table, count, exported_columns)
 
     return {
         "filename": filename,

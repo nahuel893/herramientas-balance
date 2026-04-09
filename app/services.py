@@ -54,6 +54,18 @@ def _build_conditions(
     return conditions
 
 
+def run_count(
+    table: str,
+    columns: list[str],
+    filters: list | None = None,
+    date_column: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> int:
+    conditions = _build_conditions(table, filters, date_column, date_from, date_to)
+    return repository.count_rows(table, conditions)
+
+
 def run_preview(
     table: str,
     columns: list[str],

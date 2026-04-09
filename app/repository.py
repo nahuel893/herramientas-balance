@@ -47,6 +47,19 @@ def get_table_columns(table_name: str) -> list[dict]:
     return columns
 
 
+def count_rows(table_name: str, conditions: list[tuple[str, list]]) -> int:
+    conn = get_connection()
+    query = f'SELECT COUNT(*) FROM gold."{table_name}"'
+    params = [v for _, vals in conditions for v in vals]
+    if conditions:
+        query += ' WHERE ' + ' AND '.join([fragment for fragment, _ in conditions])
+    cur = conn.cursor()
+    cur.execute(query, params or None)
+    result = cur.fetchone()[0]
+    conn.close()
+    return result
+
+
 def fetch_data(table_name: str, columns: list[str], conditions: list[tuple[str, list]]) -> pd.DataFrame:
     conn = get_connection()
     safe_columns = ', '.join([f'"{col}"' for col in columns])
@@ -170,6 +183,17 @@ def ensure_app_schema():
             columns TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             UNIQUE(user_id, name)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS export_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            row_count INTEGER NOT NULL,
+            exported_columns TEXT NOT NULL,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
     conn.commit()
@@ -296,3 +320,39 @@ def delete_user_selection(user_id, name):
     conn.commit()
     conn.close()
     return deleted
+
+
+# -- Export history queries -------------------------------------------------
+
+def insert_export_history(user_id: int, filename: str, table_name: str, row_count: int, exported_columns: list) -> None:
+    """Record a successful export in export_history."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO export_history (user_id, filename, table_name, row_count, exported_columns) VALUES (?, ?, ?, ?, ?)",
+        (user_id, filename, table_name, row_count, json.dumps(exported_columns)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_export_history(user_id: int, limit: int = 20) -> list:
+    """Return the last `limit` export records for user_id, ordered by most recent first."""
+    conn = get_app_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, filename, table_name, row_count, exported_columns, timestamp FROM export_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
+        (user_id, limit),
+    )
+    rows = []
+    for row in cur.fetchall():
+        rows.append({
+            "id": row[0],
+            "filename": row[1],
+            "table_name": row[2],
+            "row_count": row[3],
+            "exported_columns": json.loads(row[4]),
+            "timestamp": row[5],
+        })
+    conn.close()
+    return rows
